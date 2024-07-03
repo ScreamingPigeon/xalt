@@ -786,8 +786,8 @@ void myinit(int argc, char **argv)
   
   // Create a start record for all executions?
   v = getenv("XALT_START_ALL");
-  DEBUG(stderr, "XALT_START_ALL set to %s", v); 
-    if (v == "yes")
+  DEBUG(stderr, "XALT_START_ALL set to %s \n", v); 
+    if (v) 
     {
       DEBUG(stderr, "    -> Recording start record!\n",
              num_tasks, (int) always_record);
