@@ -67,8 +67,8 @@ path_patterns = [
     ['KEEP',  r'^\/usr\/bin\/g++*'],
     ['KEEP',  r'^\/usr\/bin\/pip*'],
     ['KEEP',  r'^\/usr\/local\/*'],
-    ['KEEP',  r'^\/usr\/bin\/srun'],
-    ['KEEP',  r'^\/usr\/bin\/salloc'],
+#   ['KEEP',  r'^\/usr\/bin\/srun'],
+#   ['KEEP',  r'^\/usr\/bin\/salloc'],
     # other user spaces that might hold executables
     ['KEEP', r'^\/scratch\/*'],
     ['KEEP', r'^\/delta\/scratch\/*'],
