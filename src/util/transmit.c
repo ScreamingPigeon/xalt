@@ -102,7 +102,7 @@ void transmit(const char* transmission, const char* jsonStr, const char* kind, c
       my_free(fn,   strlen(fn));
       // file transmission ends here
       clock_t end = clock();
-      DEBUG(stderr, "Transmission time: %f seconds\n", (double)(start - end) / CLOCKS_PER_SEC);
+      DEBUG(stderr, "Transmission time: %f seconds\n", (double)(end-start) / CLOCKS_PER_SEC);
     }
   else if (strcasecmp(transmission, "syslog") == 0)
     {

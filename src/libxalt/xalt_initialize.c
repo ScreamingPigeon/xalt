@@ -782,6 +782,38 @@ void myinit(int argc, char **argv)
       DEBUG(stderr,"    -> MPI_SIZE: %d < MPI_ALWAYS_RECORD: %d, XALT is build to %s, Current %s -> Not producing a start record\n",
              num_tasks, (int) always_record, xalt_build_descriptA[build_mask], xalt_run_descriptA[run_mask]);
     }
+  
+  
+  // Create a start record for all executions?
+   v = getenv("XALT_START_ALL");
+  
+    if (v == "yes")
+    {
+      DEBUG(stderr, "    -> MPI_SIZE: %d >= MPI_ALWAYS_RECORD: %d => recording start record!\n",
+             num_tasks, (int) always_record);
+
+      if ( ! have_uuid )
+        {
+          build_uuid(&uuid_str[]);
+          have_uuid = 1;
+        }
+
+      if (xalt_tracing || xalt_run_tracing)
+        {
+          fprintf(stderr, "  Recording state at beginning of %s user program:\n    %s\n",
+                  xalt_run_short_descriptA[run_mask], exec_path);
+        }
+      
+      run_submission(&xalt_timer, orig_pid, ppid, start_time, end_time, probability, exec_path, num_tasks, num_gpus,
+                     xalt_run_short_descriptA[xalt_kind], uuid_str, watermark, usr_cmdline, xalt_tracing,
+                     always_record, stderr);
+
+      DEBUG(stderr,"    -> uuid: %s\n", uuid_str);
+    }
+
+
+
+
 
   /**********************************************************
    * Restore LD_PRELOAD after running xalt_run_submission.
