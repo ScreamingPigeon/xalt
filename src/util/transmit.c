@@ -16,6 +16,8 @@
 #include "xalt_c_utils.h"
 #include "xalt_debug_macros.h"
 
+#include <time.h>
+
 #define XALT_LOGGING_LBL  "XALT_LOGGING"
 #define KIND_LBL          "kind"
 #define NB_LBL            "nb"
@@ -54,6 +56,8 @@ void transmit(const char* transmission, const char* jsonStr, const char* kind, c
 
   if (strcasecmp(transmission, "file") == 0 || strcasecmp(transmission, "file_separate_dirs") == 0 )
     {
+      // file transmission starts here 
+      clock_t start = clock();
       if (resultFn == NULL)
         {
           DEBUG(my_stderr,"    resultFn is NULL, $HOME or $USER might be undefined -> No XALT output\n");
@@ -96,6 +100,9 @@ void transmit(const char* transmission, const char* jsonStr, const char* kind, c
         }
       my_free(tmpFn,strlen(tmpFn));
       my_free(fn,   strlen(fn));
+      // file transmission ends here
+      clock_t end = clock();
+      DEBUG(stderr, "Transmission time: %f seconds\n", (double)(start - end) / CLOCKS_PER_SEC);
     }
   else if (strcasecmp(transmission, "syslog") == 0)
     {
