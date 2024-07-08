@@ -56,6 +56,7 @@ void build_resultDir(char **resultDir, const char* kind, const char* transmissio
   char* c_home = getenv("HOME");
   
   const char * xalt_file_prefix = getenv("XALT_FILE_PREFIX");
+  printf("XALT FILE PREFIX IS: %s \n", xalt_file_prefix);
   if (xalt_file_prefix == NULL)
     xalt_file_prefix = XALT_FILE_PREFIX;
 
