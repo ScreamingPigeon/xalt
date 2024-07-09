@@ -752,6 +752,8 @@ void myinit(int argc, char **argv)
     always_record = strtol(v,(char **) NULL, 10);
 
   xalt_timer.init = epoch() - t0;
+
+
   // Create a start record for any MPI executions with an acceptable number of tasks.
   // or a PKG type
   if (num_tasks >= always_record )
@@ -877,11 +879,7 @@ void wrapper_for_myfini(int signum)
   sigaction(signum, &action, NULL);
   signal_hdlr_called = signum;
   myfini();
-
-  // Ignore USR2 to trigger pre-emptive log without killing processes without USR2 handler
-  if (signum != 12){
-      raise(signum);
-  }
+  raise(signum);
 }
 
 static void close_out(FILE* fp, int xalt_err)

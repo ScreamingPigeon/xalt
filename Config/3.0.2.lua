@@ -15,7 +15,8 @@ local base  = "/sw/workload/xalt2/xalt/xalt"  --> Change to match your site!!!
 local bin   = pathJoin(base,"bin")
 local pythonpath   = pathJoin(base,"site_packages")
 local lib_dir = "/lib64"
-local file_dir = "/sw/workload/delta/json"
+local record_dir  = "/sw/workload/delta/json"
+
 
 -- Comma seperated as specified by https://apptainer.org/docs/user/main/bind_paths_and_mounts.html
 local apptainer_bind_dir = "/sw/workload/xalt2/xalt/xalt, /sw/workload/delta"
@@ -30,7 +31,8 @@ prepend_path("LD_PRELOAD",    pathJoin(base, "$LIB/libxalt_init.so"))
 prepend_path("COMPILER_PATH", bin)
 
 -- XAlT_DATE_TIME creation
-setenv("XALT_FILE_PREFIX", pathJoin(file_dir, formattedDate))
+setenv("XALT_FILE_PREFIX", pathJoin(record_dir,formattedDate))
+
 
 
 -- Variable needed for Python tracking outside a container 
