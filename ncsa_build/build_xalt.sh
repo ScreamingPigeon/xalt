@@ -33,7 +33,7 @@ else
 fi
 
 # Setting Source to read and execute
-# chmod -R u=rwx,o=rx $src_dir
+chmod -R a+rx $src_dir
 
 # Configuring XALT now
 echo "Configuring XALT"
@@ -54,11 +54,13 @@ make install
 
 if [ $? -eq 0 ]; then
         echo "Installation Complete." 
-        chmod -R u+rwx,o+rx $build_dir/xalt
+        chmod -R a+rx $build_dir/xalt
         echo "Updating Modulefile from source"
         cp $src_dir/ncsa_build/$module_ver.lua $build_dir/module/xalt/$module_ver.lua
         echo "Add ${base_dir}/module to MODULEPATH to begin using ${module_name}"
         cp $src_dir/ncsa_build/build_xalt.sh $build_dir/build_xalt.sh
+        echo "Updating record directory permissions"
+        chmod -R a+wx $json_dir
 
 else
     echo "Install Failed"
