@@ -153,6 +153,31 @@ The main changes in this fork are
 
 ### Miscellaneous Notes
 
+#### Symlinks
+##### Pre-Execution Filtering
+
+The XALT filters uses the path of the target used to build the symlink, as opposed to the path of the link itself. For example, if you have the rules
+- KEEP, `/usr/bin/gcc`
+- SKIP, `/sw/*`
+and the following file in `/sw/workload/xalt/`
+```
+lrwxrwxrwx  1 prakhar7      root   12 Jul 23 11:38 gcc -> /usr/bin/gcc
+
+```
+XALT uses the `/usr/bin/gcc` path while filtering. 
+
+##### Record Generation
+Run Records contain references to the symlink's path
+```
+  "cmdlineA": ["/sw/workload/xalt2/gcc"],
+```
+
+However, in the `UserT` key, we see
+```
+    "exec_path": "/usr/bin/gcc",
+```
+Therefore run records capture both paths
+
 #### Profiling
 
 XALT comes with a special build flag `--with-tmpdir=` which allows the user to specify the directory for intermediate logs, as opposed to the default which is `/dev/shm`. Attempting to use $HOME in this flag leads to signifcant slowdowns
