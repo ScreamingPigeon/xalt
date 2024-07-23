@@ -55,6 +55,7 @@ If you want the XALT module to be always available, simply include the changes t
 XALT is located in `/sw/workload/` on Delta. The source (this repository) is in `/sw/workload/xalt2/xalt_src` and the executables are in `/sw/workload/xalt2/xalt`.
 
 Each build of XALT requires a configuration file. The configuration file is in [Delta_config.py](https://github.com/ScreamingPigeon/xalt/blob/main/Config/Delta_Config.py).
+Note: XALT tracks linking on all hostnames, so both compute and login nodes.
 
 Relevant information on configuring XALT can be found here
 - [Downloading XALT and Configuring it for your site](https://xalt.readthedocs.io/en/latest/020_site_configuration.html)
