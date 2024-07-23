@@ -157,8 +157,9 @@ The main changes in this fork are
 ##### Pre-Execution Filtering
 
 The XALT filters uses the path of the target used to build the symlink, as opposed to the path of the link itself. For example, if you have the rules
-- KEEP, `/usr/bin/gcc`
-- SKIP, `/sw/*`
+  - KEEP, `/usr/bin/gcc`
+  - SKIP, `/sw/*`
+
 and the following file in `/sw/workload/xalt/`
 ```
 lrwxrwxrwx  1 prakhar7      root   12 Jul 23 11:38 gcc -> /usr/bin/gcc
