@@ -288,4 +288,5 @@ trap sighandler TERM
 
 ### Existing Issues
 - The generation of link records is not consistent among different compilers. Possibly due to the order in which $PATH is set. Seems to work with the  `/bin/gcc` and the aocc module. Link records do not generate with the gcc module
-- Need to turn on tracking for compilers on login nodes. 
+- Need to turn on tracking for compilers on login nodes.
+- The `$APPTAINER_BINDPATH` variable set in the modulefile interferes with building containers. Builds fail due to lack of a mount point for these directories.
