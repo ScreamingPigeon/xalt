@@ -594,26 +594,550 @@ void myinit(int argc, char **argv) {
         do {
                 if (xalt_gpu_tracking) {
 
-                        struct stat s = {0};
-                        /* check whether the nvidia module is loaded */
-                        if (stat(nvidia_dir, &s) != 0 || !S_ISDIR(s.st_mode)) {
-                                xalt_gpu_tracking = 0;
-                                DEBUG(stderr,
-                                      "  GPU tracing is turned off. This "
-                                      "directory \"%s\" does not "
-                                      "exist!\n",
-                                      nvidia_dir);
-                                break;
-                        }
+          struct stat s = {0};
+          /* check whether the nvidia module is loaded */
+          if (stat(nvidia_dir, &s) !=  0 || ! S_ISDIR(s.st_mode))
+            {
+              xalt_gpu_tracking = 0;
+              DEBUG(stderr, "  GPU tracing is turned off. This directory \"%s\" does not exist!\n", nvidia_dir);
+              break;
+            }
 #ifdef USE_NVML
-                        DEBUG(stderr, "  GPU tracing with NVML\n");
-                        /* Open the NVML library at runtime.  This avoids
-                           failing if the library is not available on a
-                           particular system.  In that case, the handle will not
-                           be created and GPU tracking will be disabled. */
-                        if (load_nvml() == 0) {
-                                xalt_gpu_tracking = 0;
-                                break;
+          DEBUG(stderr, "  GPU tracing with NVML\n");
+          /* Open the NVML library at runtime.  This avoids failing if
+             the library is not available on a particular system.  In
+             that case, the handle will not be created and GPU
+             tracking will be disabled. */
+          if (load_nvml() == 0) {
+            xalt_gpu_tracking = 0;
+            break;
+          }
+
+          nvmlReturn_t result;
+          struct timeval tv;
+
+          /* Mark time the program started.  Use this to compare to
+           * GPU process timestamps in fini to only count processes
+           * that started during the lifetime of the program. */
+          gettimeofday(&tv, NULL);
+          __time = (unsigned long long)(tv.tv_sec) * 1000000 + (unsigned long long)(tv.tv_usec);
+
+          result = _nvmlInit();
+          if (result != NVML_SUCCESS)
+            {
+              DEBUG(stderr, "    -> Stopping GPU Tracking => Cannot initialize NVML: %s\n\n", _nvmlErrorString(result));
+              xalt_gpu_tracking = 0;
+              break;
+            }
+#elif USE_DCGM
+          DEBUG(stderr, "  GPU tracing with DCGM\n");
+
+          /* Open the DCGM library at runtime.  This avoids failing if
+             the library is not available on a particular system.  In
+             that case, the handle will not be created and GPU
+             tracking will be disabled. */
+          if (load_dcgm() == 0) {
+            xalt_gpu_tracking = 0;
+            break;
+          }
+          dcgmReturn_t result;
+
+          result = _dcgmInit();
+          if (result != DCGM_ST_OK)
+            {
+              DEBUG(stderr, "    -> Stopping GPU Tracking => Cannot initialize DCGM: %s\n\n", errorString(result));
+              xalt_gpu_tracking = 0;
+              dcgm_handle       = 0;
+              break;
+            }
+
+          DCGMFUNC2(_dcgmStartEmbedded, DCGM_OPERATION_MODE_MANUAL, &dcgm_handle, &result);
+
+          if (result != DCGM_ST_OK)
+            {
+              DEBUG(stderr, "    -> Stopping GPU Tracking => Cannot start DCGM: %s\n\n", errorString(result));
+              xalt_gpu_tracking = 0;
+              dcgm_handle       = 0;
+              break;
+            }
+
+          if ( ! have_uuid )
+            {
+              build_uuid(&uuid_str[0]);
+              have_uuid = 1;
+            }
+
+          result = _dcgmJobStartStats(dcgm_handle, (dcgmGpuGrp_t)DCGM_GROUP_ALL_GPUS, uuid_str);
+          if (result != DCGM_ST_OK)
+            {
+              DEBUG(stderr, "    -> Stopping GPU Tracking => Cannot start DCGM job stats: %s\n\n", errorString(result));
+              xalt_gpu_tracking = 0;
+              dcgm_handle       = 0;
+              break;
+            }
+
+          result = _dcgmWatchJobFields(dcgm_handle, (dcgmGpuGrp_t)DCGM_GROUP_ALL_GPUS, 1000, 1e9, 0);
+          if (result != DCGM_ST_OK)
+            {
+              DEBUG(stderr,   "    -> Stopping GPU Tracking => Cannot start DCGM job watch: %s\n\n", errorString(result));
+              if (result == DCGM_ST_REQUIRES_ROOT)
+                DEBUG(stderr, "    -> May need to enable accounting mode: sudo nvidia-smi -am 1\n");
+              xalt_gpu_tracking = 0;
+              dcgm_handle       = 0;
+              break;
+            }
+
+          result = _dcgmUpdateAllFields(dcgm_handle, 1);
+          if (result != DCGM_ST_OK)
+            {
+              DEBUG(stderr, "    -> Stopping GPU Tracking => Cannot update DCGM job fields: %s\n\n", errorString(result));
+              xalt_gpu_tracking = 0;
+              dcgm_handle       = 0;
+              break;
+            }
+#endif
+        }
+    }
+  while(0);
+  xalt_timer.gpu_setup = epoch() - t_gpu;
+#endif
+
+  if (xalt_gpu_tracking == 0)
+    DEBUG(stderr, "  No GPU tracking\n");
+
+  start_time = t0;
+  frac_time  = start_time - (long) (start_time);
+
+  /**********************************************************
+   * Save LD_PRELOAD and clear it before running
+   * run_submission().
+   *********************************************************/
+
+  p = getenv("LD_PRELOAD");
+  if (p)
+    ld_preload_strp = strdup(p);
+
+  unsetenv("LD_PRELOAD");
+
+  const char * blank = " ";
+
+  /* Push XALT_RUN_UUID, XALT_DATE_TIME into the environment so that things like
+   * R and python can know what job and what start time of the this run is.
+   */
+
+  if ( xalt_kind == BIT_PKGS )
+    {
+      if ( ! have_uuid )
+        {
+          build_uuid(&uuid_str[0]);
+          have_uuid = 1;
+        }
+      setenv("XALT_RUN_UUID",uuid_str,1);
+      DEBUG(stderr,"    -> Setting XALT_RUN_UUID: %s\n",uuid_str);
+    }
+
+  time_t my_time = (time_t) start_time;
+
+  strftime(dateStr, DATESZ, "%Y_%m_%d_%H_%M_%S",localtime(&my_time));
+  sprintf(fullDateStr,"%s_%d",dateStr, (int) (frac_time*10000.0));
+
+  char* my_xalt_dir = xalt_dir(NULL);
+  setenv("XALT_DATE_TIME",fullDateStr,1);
+  setenv("XALT_DIR",my_xalt_dir,1);
+  my_free(my_xalt_dir, strlen(my_xalt_dir));
+
+  ppid = getppid();
+
+  // This routine returns either "FALSE" for nothing found or the watermark.
+  bool have_watermark = xalt_vendor_note(&watermark, xalt_tracing);
+  DEBUG(stderr,"    -> Found watermark via vendor note: %s\n", have_watermark ? "true" : "false");
+
+  // If MPI program and no vendor watermark then try extracting the watermark
+  // with objdump via extractXALTRecord(...)
+  if (num_tasks > 1 && ! have_watermark )
+    {
+      have_watermark = extractXALTRecordString(exec_path, &watermark);
+      DEBUG(stderr,"    -> Found watermark via objdump: %s\n", have_watermark ? "true" : "false");
+    }
+
+  if (! have_watermark) 
+    watermark = strdup("FALSE");
+
+  /*
+   * XALT is only recording the end record for scalar executables and
+   * not the start record.
+   */
+
+  v = getenv("XALT_SAMPLING");
+  if (!v)
+    {
+      v = getenv("XALT_SCALAR_SAMPLING");
+      if (!v)
+        v = getenv("XALT_SCALAR_AND_SPSR_SAMPLING");
+    }
+
+  if (v && strcmp(v,"yes") == 0)
+    {
+      xalt_sampling     = 1;
+      unsigned int a    = (unsigned int) clock();
+      unsigned int b    = (unsigned int) time(NULL);
+      unsigned int c    = (unsigned int) getpid();
+      unsigned int seed = mix(a,b,c);
+
+      srand(seed);
+      my_rand       = (double) rand()/(double) RAND_MAX;
+    }
+
+  v = getenv("XALT_TESTING_RUNTIME");
+  if (v)
+    testing_runtime = strtod(v,NULL);
+
+  always_record = xalt_mpi_always_record;
+  v = getenv("XALT_MPI_ALWAYS_RECORD");
+  if (v)
+    always_record = strtol(v,(char **) NULL, 10);
+
+  xalt_timer.init = epoch() - t0;
+  // Create a start record for any MPI executions with an acceptable number of tasks.
+  // or a PKG type
+  if (num_tasks >= always_record )
+    {
+      DEBUG(stderr, "    -> MPI_SIZE: %d >= MPI_ALWAYS_RECORD: %d => recording start record!\n",
+             num_tasks, (int) always_record);
+
+      if ( ! have_uuid )
+        {
+          build_uuid(&uuid_str[0]);
+          have_uuid = 1;
+        }
+
+      if (xalt_tracing || xalt_run_tracing)
+        {
+          fprintf(stderr, "  Recording state at beginning of %s user program:\n    %s\n",
+                  xalt_run_short_descriptA[run_mask], exec_path);
+        }
+      
+      run_submission(&xalt_timer, orig_pid, ppid, start_time, end_time, probability, exec_path, num_tasks, num_gpus,
+                     xalt_run_short_descriptA[xalt_kind], uuid_str, watermark, usr_cmdline, xalt_tracing,
+                     always_record, stderr);
+
+      DEBUG(stderr,"    -> uuid: %s\n", uuid_str);
+    }
+  else
+    {
+      DEBUG(stderr,"    -> MPI_SIZE: %d < MPI_ALWAYS_RECORD: %d, XALT is build to %s, Current %s -> Not producing a start record\n",
+             num_tasks, (int) always_record, xalt_build_descriptA[build_mask], xalt_run_descriptA[run_mask]);
+    }
+  
+/*
+  // ====================================================== MODIFICATION =============================================
+  // Create Start Records for all programs
+  v = getenv("XALT_ALWAYS_CREATE_START");
+  DEBUG(stderr, "    -> XALT_START_ALL set to %s \n", v); 
+    if (v) 
+    {
+      DEBUG(stderr, "    -> Recording start record!\n",
+             num_tasks, (int) always_record);
+
+      if ( ! have_uuid )
+        {
+          build_uuid(&uuid_str[0]);
+          have_uuid = 1;
+        }
+
+      if (xalt_tracing || xalt_run_tracing)
+        {
+          fprintf(stderr, "  Recording state at beginning of %s user program:\n    %s\n",
+                  xalt_run_short_descriptA[run_mask], exec_path);
+        }
+      
+      run_submission(&xalt_timer, orig_pid, ppid, start_time, end_time, probability, exec_path, num_tasks, num_gpus,
+                     xalt_run_short_descriptA[xalt_kind], uuid_str, watermark, usr_cmdline, xalt_tracing,
+                     always_record, stderr);
+
+      DEBUG(stderr,"    -> uuid: %s\n", uuid_str);
+    }
+  // ====================================================== MODIFICATION ENDS ========================================
+*/
+
+
+
+  /**********************************************************
+   * Restore LD_PRELOAD after running xalt_run_submission.
+   * This way the application and child apps will have
+   * LD_PRELOAD set. (I'm looking at you mpiexec.hydra!)
+   *********************************************************/
+
+  if (ld_preload_strp)
+    {
+      setenv("LD_PRELOAD", ld_preload_strp, 1);
+      memset(ld_preload_strp, 0, strlen(ld_preload_strp));
+      free(ld_preload_strp);
+    }
+
+  /************************************************************
+   * Register a signal handler wrapper_for_myfini for all the
+   * important signals. This way a program terminated by
+   * SIGFPE, SIGTERM, etc will produce an end record.
+   *********************************************************/
+  v = getenv("XALT_SIGNAL_HANDLER");
+  if (!v)
+    v = XALT_SIGNAL_HANDLER;
+  if (strcasecmp(v,"yes") == 0)
+    {
+      DEBUG(stderr, "    -> Setting up signals\n");
+      int signalA[] = {SIGHUP, SIGQUIT, SIGILL,  SIGTRAP, SIGABRT, SIGBUS,
+                       SIGFPE, SIGTERM, SIGXCPU, SIGUSR1, SIGUSR2, SIGALRM};
+      int signalSz  = N_ELEMENTS(signalA);
+      struct sigaction action;
+      struct sigaction old;
+      memset(&action, 0, sizeof(struct sigaction));
+      action.sa_handler = wrapper_for_myfini;
+      for (i = 0; i < signalSz; ++i)
+        {
+          int signum = signalA[i];
+
+          sigaction(signum, NULL, &old);
+
+          if (old.sa_handler == NULL)
+            sigaction(signum, &action, NULL);
+        }
+    }
+  else
+    DEBUG(stderr, "    -> Signals capturing disabled\n");
+    
+  v = getenv("XALT_DUMP_ENV");
+  if (v && strcmp(v, "yes") == 0)
+    {
+      int i;
+      for (i = 0; environ[i] != NULL; ++i)
+        fprintf(stderr,"%s\n",environ[i]);
+    }
+  DEBUG(stderr, "    -> Leaving myinit\n}\n\n");
+}
+void wrapper_for_myfini(int signum)
+{
+  struct sigaction action;
+  memset(&action, 0, sizeof(struct sigaction));
+  sigemptyset( &action.sa_mask);
+  action.sa_handler = SIG_DFL;
+  sigaction(signum, &action, NULL);
+  signal_hdlr_called = signum;
+  myfini();
+  
+  /* If you have the signal handler enabled and are using say 
+   * USR1 to preempt logging on XALT, DO NOT RAISE the signal again
+   * as the user may not have written a handler for the signal
+   * leading to the process dieing on preemptiong
+   */ 
+  raise(signum);
+  
+}
+
+static void close_out(FILE* fp, int xalt_err)
+{
+  if (! fp)
+    return;
+
+  fflush(fp);
+  if (xalt_err)
+    {
+      fclose(fp);
+      close(errfd);
+      close(STDERR_FILENO);
+    }
+}
+
+void myfini()
+{
+  FILE * my_stderr = NULL;
+  char * cmdline;
+  char * v;
+  double run_time;
+  int    xalt_err = xalt_tracing || xalt_run_tracing;
+
+  double t0 = epoch();
+  if (xalt_err)
+    {
+      fflush(stderr);
+      close(STDERR_FILENO);
+      dup2(errfd, STDERR_FILENO);
+      my_stderr = fdopen(errfd,"w");
+
+      if ( !my_stderr )
+        my_stderr = stderr;
+    }
+
+
+  set_end_record();  /* Mark my_free() to not free since we are on the way out */
+
+  DEBUG(my_stderr,"\nmyfini(%ld/%d,%s,%s){\n", my_rank, num_tasks, STR(STATE), exec_path);
+  if (orig_pid != getpid())
+    {
+      DEBUG(my_stderr,"    -> exiting because myfini() has been called more than once via forking\n}\n\n");
+      close_out(my_stderr, xalt_err);
+      return;
+    }
+    
+  if (getenv("__XALT_FINAL_STATE__"))
+    {
+      DEBUG(my_stderr,"    -> exiting because myfini() has been called more than once\n}\n\n");
+      close_out(my_stderr, xalt_err);
+      return;
+    }
+
+  if (signal_hdlr_called)
+    DEBUG(my_stderr,"    -> myfini() called via signal handler with signum: %d\n", signal_hdlr_called);
+
+  /* Stop tracking if my mpi rank is not zero or the path was rejected. */
+  if (reject_flag != XALT_SUCCESS)
+    {
+      if (xalt_kind == BIT_PKGS)
+        remove_xalt_tmpdir(&uuid_str[0]);
+
+      DEBUG(my_stderr,"    -> exiting because reject is set to: %s for program: %s\n}\n\n",
+             xalt_reasonA[reject_flag], exec_path);
+      close_out(my_stderr, xalt_err);
+      return;
+    }
+
+  end_time = epoch();
+  unsetenv("LD_PRELOAD");
+  setenv("__XALT_FINAL_STATE__",    "1",1);
+
+  // Sample all scalar executions and all MPI executions less than **always_record**
+  if (num_tasks < always_record)
+    {
+      if (xalt_sampling)
+        {
+          double run_time;
+          if (testing_runtime > -0.1)
+            {
+              run_time = testing_runtime;
+              end_time = start_time + run_time;
+            }
+          else
+            run_time  = end_time - start_time;
+          probability = prgm_sample_probability(num_tasks, run_time);
+          
+          if (my_rand >= probability)
+            {
+              DEBUG(my_stderr, "    -> exiting because sampling. "
+                     "run_time: %g, (my_rand: %g > prob: %g) for program: %s\n}\n\n",
+                     run_time, my_rand, probability, exec_path);
+              if (xalt_err && my_stderr)
+                {
+                  fclose(my_stderr);
+                  close(errfd);
+                  close(STDERR_FILENO);
+                }
+              return;
+            }
+          else
+            DEBUG(my_stderr, "    -> Sampling program run_time: %g: (my_rand: %g <= prob: %g) for program: %s\n",
+                   run_time, my_rand, probability, exec_path);
+        }
+      else
+        DEBUG(my_stderr, "    -> XALT_SAMPLING = \"no\" All programs tracked!\n");
+    }
+
+#if USE_DCGM || USE_NVML
+  /* This code will only ever be active in 64 bit mode and not 32 bit mode */
+  if (xalt_gpu_tracking)
+    {
+      double t_gpu = epoch();
+#ifdef USE_NVML
+      nvmlReturn_t result;
+      unsigned int device_count = 0;
+
+      /* Get the number of GPU devices in the system */
+      result = _nvmlDeviceGetCount(&device_count);
+      if (result == NVML_SUCCESS)
+        {
+          DEBUG(my_stderr, "  %d GPUs detected\n", device_count);
+
+          /* Loop over GPU devices */
+          unsigned int i = 0;
+          for (i = 0 ; i < device_count ; i++)
+            {
+              nvmlDevice_t device;
+              nvmlEnableState_t mode;
+              unsigned int pid_count = 0, max_pid_count = 0;
+              unsigned int *pids = 0;
+              unsigned int num_active_pids = 0;
+
+              /* Get a device handle */
+              result = _nvmlDeviceGetHandleByIndex(i, &device);
+              if (result != NVML_SUCCESS)
+                {
+                  DEBUG(my_stderr, "  Unable to get device handle for GPU %d: %s\n", i, _nvmlErrorString(result));
+                  continue;
+                }
+
+              /* Check whether accounting mode is enabled for this device */
+              result = _nvmlDeviceGetAccountingMode(device, &mode);
+              if (result != NVML_SUCCESS)
+                {
+                  DEBUG(my_stderr, "  Unable to get accounting mode for GPU %d: %s\n", i, _nvmlErrorString(result));
+                  continue;
+                }
+              if (mode != NVML_FEATURE_ENABLED)
+                {
+                  DEBUG(my_stderr, "  Accounting mode is not enabled for GPU %d. Enable accounting mode: sudo nvidia-smi -i %d -am 1\n", i, i);
+                  continue;
+                }
+
+              /* Get the size of the accounting buffer */
+              result = _nvmlDeviceGetAccountingBufferSize(device, &max_pid_count);
+              if (result != NVML_SUCCESS)
+                {
+                  DEBUG(my_stderr, "  Unable to get the accounting buffer size for GPU %d: %s\n", i, _nvmlErrorString(result));
+                  continue;
+                }
+
+              /* Allocate space for the accounting data */
+              pids = (unsigned int *)XMALLOC(sizeof(unsigned int)*max_pid_count);
+              memset(pids, 0, sizeof(unsigned int)*max_pid_count);
+
+              /* Get PID accounting data */
+              pid_count = max_pid_count;
+              result = _nvmlDeviceGetAccountingPids(device, &pid_count, pids);
+              if (result != NVML_SUCCESS)
+                {
+                  DEBUG(my_stderr, "  Unable to get accounting data for GPU %d: %s\n", i, _nvmlErrorString(result));
+                  my_free(pids, sizeof(unsigned int)*max_pid_count);
+                  continue;
+                }
+
+              /* Loop over the PID accounting data looking for PIDs that
+               * started after the program. Count those as belonging to
+               * this program execution. */
+              unsigned int j = 0;
+              for (j = 0 ; j < pid_count ; j++)
+                {
+                  nvmlAccountingStats_t stats;
+
+                  result = _nvmlDeviceGetAccountingStats(device, pids[j], &stats);
+                  if (result == NVML_SUCCESS)
+                    {
+                      /* If the GPU PID start time is later than the
+                         program start time, consider the GPU PID to
+                         belong to the program.  This would not
+                         necessarily be true if the system is
+                         shared by unrelated programs. */
+                      if (stats.startTime >= __time)
+                        {
+                          /* There is a mystery PID that appears for all
+                             GPUs.  The PID is constant and is assumed
+                             to be a CUDA cleanup process.  That PID
+                             has a maxMemoryUsage of 0 while a real
+                             PID will always have a non-zero value, so
+                             use that to exclude it. */
+                          if (stats.maxMemoryUsage > 0)
+                            {
+                              num_active_pids++;
+                              DEBUG(my_stderr, "  PID %d startTime=%llu time=%llu isRunning=%d\n", pids[j], stats.startTime, stats.time, stats.isRunning);
+                            }
                         }
 
                         nvmlReturn_t result;

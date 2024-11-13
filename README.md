@@ -26,7 +26,7 @@ statistics helps stakeholders conduct business in a more efficient,
 effective, and systematic way.
 
 
-## Documentation
+## Original Documentation
 
 * Documentation:   https://xalt.readthedocs.org
 * GitHub:          https://github.com/xalt/xalt
@@ -39,190 +39,263 @@ effective, and systematic way.
 Please go to https://sourceforge.net/projects/xalt/lists/xalt-users to join.
 
 
+# NCSA SPIN Summer 2024 Documentation
+This is a fork of XALT for the NCSA. This was developed as a project in the SPIN Summer 2024 cohort by Prakhar Gupta.
 
-## ChangeLog
+## For Users
 
-### XALT 3.0
+The XALT modulefile is available in the `/sw/workload/xalt2/module/xalt/3.0.2.lua/`. You can enable XALT on a node by running the following commands on the shell
 
-Features/Bug Fixes:
+```
+[user@node ~]$ export MODULEPATH=$MODULEPATH:/sw/workload/xalt2/module
+[user@node ~]$ module load xalt/3.0.2
+```
+XALT is deployed as a **sticky** module! So, commands like `module purge` or `module unload xalt` will not get rid of it, unless you use the `--force` flag.  To unload:
+```
+[user@node ~]$ module --force unload xalt/3.0.2
+```
+If you want the XALT module to be always available, simply include the changes to modulepath in your `.bashrc`
 
-   1. Better support for containers including containers based on Alpine.
+## For Administrators
 
-   2. Use of CRC to protect when UUID are not unique.
+### Current Configuration on Delta
 
-   3. Pre-ingestion filtering added.
+XALT is located in `/sw/workload/` on Delta. The source (this repository) is in `/sw/workload/xalt2/xalt_src` and the executables are in `/sw/workload/xalt2/xalt`.
 
-   $. Compiler support for rust, nim, and chapel
+Each build of XALT requires a configuration file. The configuration file is in [Delta_config.py](https://github.com/ScreamingPigeon/xalt/blob/main/Config/Delta_Config.py).
+Note: XALT tracks linking on all hostnames, so both compute and login nodes.
 
-   6. Support for ARM processors running Linux.
+Relevant information on configuring XALT can be found here
+- [Downloading XALT and Configuring it for your site](https://xalt.readthedocs.io/en/latest/020_site_configuration.html)
+- [Running Configure and building XALT for your site](https://xalt.readthedocs.io/en/latest/050_install_and_test.html) 
+- [XALT's Environment Variables](https://xalt.readthedocs.io/en/latest/095_xalt_env_vars.html)
 
-   7. Filtering based on command line arguments.
-   
-### XALT 2.10:
+The script used to build xalt on Delta can be found at [`ncsa_build/build_xalt.sh`](https://github.com/ScreamingPigeon/xalt/blob/main/ncsa_build/build_xalt.sh). Running the script to build XALT automatically updates `xalt_src/` from this repository, updates the module file, and finally copies itself into `/sw/workload/xalt2`. 
 
-Features/Bug:
 
-   1. It copies necessary libraries to <INSTALL_DIR>/<xalt-version>/lib64
+The important bit is that XALT is configured to dump files into `/sw/workload/delta/json`. The LMOD reverse map it uses to match paths to modules is in `/sw/workload/delta/process_xalt`.
 
-   2. It has remove its dependency on zlib to better support containers. The "syslog" transmission style now send the json string directly. (It is still broken into blocks.)
+The modulefile further supplements this configuration of XALT in use. On Delta, this modulefile can be found in [`/sw/workload/xalt2/module/`](https://github.com/ScreamingPigeon/xalt/blob/main/ncsa_build/3.0.2.lua).
+This modulefile enables XALT to collect information inside containers, track Python imports, etc. Notably, it also overrides the config's file-prefix flag to dump out records in a YYYYMM directory.
+So if XALT was used to track an executable in July 2024, relevant records would be dumped out in `/sw/workload/delta/json/202407/`. 
 
-   3. The XALT DB now contains a column for containers usage/non-usage.
-   
-   4. The env. var. XALT_TRACING now support a "run" value so that only executions that pass the exec path test produce any output.
+Note: Ensure that the modulefile directory is added to `$MODULEPATH` if you wish to use XALT.
 
-   5. XALT has now greatly reduced the number of system calls it makes. Only the curl transmission style requires a system call.
+### Record Description
 
-   6. Fixed bug where the XALT watermark was ignored (introduced in XALT 2.9.6) 
+An in-depth explanation on XALT's Record description can be found [here](https://xalt.readthedocs.io/en/latest/120_xalt_json.html).
 
-### XALT 2.8:
+#### RUN
+These records are generated for all ELF executables that get through the filters in our [Delta_config.py](https://github.com/ScreamingPigeon/xalt/blob/main/Config/Delta_Config.py). So tracking does not work on Login nodes.
+These RUN records are generated in the following format
 
-Features/Bug:
+> run.<site_name>.<date_time>.<user_name>.<aaa_zzz>.<xalt_run_uuid>.json
 
-   1. xalt_syslog_to_db.py and xalt_file_to_db.py support --u2acct that allows sites to specify a default charge account string when it is not specify in the job script. 
+The presence of the `aaa` in a record file name indicates that it is a START record, generated during `xalt_initialize()` before `main()` in the user code is called. If there is `zzz` in the record name, then it is an end record -
+generated in `myfini()` after a program calls `exit()`. The presence of a start record but no end record for the same `xalt_run_uuid` usually indicates an abnormal exit, possibly due to issues like  job timeouts and segfaults.
 
-   2. Better support for using XALT_FILE_PREFIX.  Use uuid hash value to chose the 000 to upto a prime number-1 (prime=997 (default)) directory when using XALT_FILE_PREFIX.
 
-   3. Separate Site controllable filter for MPI executables for all MPI tasks < MPI_ALWAYS_RECORD.
+#### LINK
+These records are generated when a compiler is used on a non-login node. XALT injects a watermark and UUID into the program's ELF header. This allows LINK records to be connected to RUN records through a common UUID - 
+granting additional telemetry on the system.
 
-   4. Stopping building libuuid. Instead copy libuuid.so from system to XALT's lib64 directory for Container support.  Similar support for other libraries.
+> link.<site_name>.<date_time>.<user_name>.<xalt_run_uuid>.json
 
-   5. Site can control whether the command line is captured or not.
+These records include information on the compiler used, the location of the built executable, and the static (`.a`) and shared (`.so`) libraries used in compilation. It also contains information about the arguments/flags used for compilation.
 
-   6. Support curl transmission.
 
+#### PKG
+These records are generated for Python imports. Each import leads to a separate package record, usually named something like
 
-### XALT 2.7:
+> pkg.<site_name>.<date_time>.<user_name>.<xalt_run_uuid>.json
 
-Features/Bug:
+These records are generated due to `$PYTHONPATH`, which injects `/sw/workload/xalt2/xalt/xalt/site_packages/sitecustomize.py` into the interpreter. This program, in turn, generates the list of imports and calls one of the XALT executables which
+stores this record in `/dev/shm`. These records are then moved to the specified file prefix when `myfini()` is invoked to avoid slowing down user code while it executes. 
+However, this leads to issues with evicting these records in the case of a program not exiting normally. This can potentially be bypassed by putting [`epilog/xalt.sh`](https://github.com/ScreamingPigeon/xalt/blob/main/epilog/xalt.sh) in the slurm epilog (epilog functionality not yet verified).
+Ensure that this is run BEFORE `/dev/shm` is cleared at the end of the job. Since these incomplete records still have the run_uuid, they can be connected to the start record of a job.
 
-   1. Many bug fixes in the configure process.
+### Debugging
+You can turn on debugging statements by exporting `XALT_TRACING=yes` in your shell. Note: XALT will not create debugging statements for `myfini()` when tracking the `lsof` program.
 
-   2. Now reads /proc/$PID/maps instead of running ldd and avoids a system call.
 
-   3. Now uses the vendor note to hold the XALT watermark thus avoiding a system call
-      to extract this information.
+### Python Utilities
+XALT can be used to help debug user issues. Once the user loads the XALT module, logs will begin generating in the file-prefix directory (`/sw/workload/delta/json/<YYYYMM>`).
 
-   4. A rpm spec file is provided.
+XALT's build comes with a few Python utilities, which can be found in `/sw/workload/xalt2/xalt/xalt/sbin/`. For our purposes, here are the useful python utilities:
+- conf_create.py
+- createDB.py
+- xalt_file_to_db.py
+- xalt_scalar_bins_usage_report.py
+- xalt_library_usage.py
+- xalt_usage_report.py
 
-   5. Programs with spaces and quotes in the name of the file and/or directories are now
-      safely handled.
+The rest of the files are either helpers or are relevant to the syslog transmission method. These utilities integrate with a MySQL Database that needs to be configured and running somewhere on the cluster. XALT Documentation recommends setting up a VM with XALT and access to the filesystem to run the Database. XALT Documentation on Database setup can be found [here](https://xalt.readthedocs.io/en/latest/060_setup_db.html). For more information on loading JSON records into the database, please refer to the [docs](https://xalt.readthedocs.io/en/latest/070_loading_json_by_file.html)
 
-   6. The build directory (i.e. the directory where ld was run) is included in the XALT watermark.
+The python packages needed to run these utilities are 
+- `mysqlclient`
+- `getent` / `pygetent`
 
-   7. There is a new output directory structure when using XALT_FILE_PREFIX that avoids using
-      $USER in the directory structure. A new script is provided to create the structure.
+Note: `pygetent` utilizes the same functionality as `getent`, it is an updated version of the package, made to be compatible with Python3. `getent`'s PyPI package had not been updated since 2013, and `pygetent` has been republished to provide ease of access for installs through pip.
 
-### XALT 2.6:
+Alternatively, a Python CLI tool was developed to pull relevant records given any of the following information
+- USER
+- xalt_run_uuid
+- slurm job id
+- DateTime range
 
-Features/Bug:
+This is available in ['cli_tools/xalt_find_records.py'](https://github.com/ScreamingPigeon/xalt/blob/main/cli_tools/xalt_find_records.py) and works by recursively traversing `/sw/workload/json` looking for records that match the filter, and printing a report as `xalt_report.txt` in the directory it was run. This should be able to help administrators pull information from user jobs. Performance will degrade if there are a large number of records in the directory.
 
-   1. All python scripts used to build XALT and load the database are now
-      python2/python3 compatible.
+### How does XALT work
 
-   2. Update documentation on how to create the database.
+A condensed explanation of the key idea behind XALT is available [here](https://github.com/ScreamingPigeon/xalt/blob/main/how_it_works.pdf)
 
-   3. Fix bug where the @git@ string was replaced in the wrong place in Makefile.in
+`myinit()`, `myfini()` and the preemptive signal handler are all in [`src/libxalt/xalt_initialize.c`](https://github.com/ScreamingPigeon/xalt/blob/main/src/libxalt/xalt_initialize.c).
 
-   4. PKGS programs (like R, Python) now use sample rules like all other scalar programs.
+### Major Changes
 
-### XALT 2.5:
+The main changes in this fork are
+1. XALT was segfaulting when wrapped around `lsof` with debugging on. This was fixed in XALT 3.0.3, but this was forked from 3.0.2 and had a near-identical fix.
+2. (No longer available) This fork of XALT supports creating start records for ALL PROCESSES as opposed to just MPI jobs. This can be achieved by setting `XALT_ALWAYS_CREATE_START=yes` in your environment. This has been included in the modulefile
+3. Comments around signal handling in [`src/libxalt/xalt_initialize.c`](https://github.com/ScreamingPigeon/xalt/blob/main/src/libxalt/xalt_initialize.c). 
+4. Inclusion of a custom config, build script, modulefile, epilog script, and a python cli-tool
 
-Features:
-   
-   1. A static version of libuuid.a is now part of XALT.
 
-   2. XALT no longer hard-codes paths at configure time. Instead
-      it used --with-systemPath=/usr/bin:/bin to control where XALT 
-      looks for executables such as basename
+### Miscellaneous Notes
 
-   3. XALT now uses the NVML base library from DCGM to optionally track
-      GPU usage.
+#### Symlinks
+##### Pre-Execution Filtering
 
-   4. XALT can be used to track executions in a Singularity container.
+The XALT filters uses the path of the target used to build the symlink, as opposed to the path of the link itself. For example, if you have the rules
+  - KEEP, `/usr/bin/gcc`
+  - SKIP, `/sw/*`
 
-   5. XALT now catches signals such as SIGSEGV, etc and re-raises them to
-      record an end record.
+and the following file in `/sw/workload/xalt/`
+```
+lrwxrwxrwx  1 prakhar7      root   12 Jul 23 11:38 gcc -> /usr/bin/gcc
 
-   6. XALT now treats programs like Python, R and MATLAB just like any other
-      program which simplifies scalar sampling rules.
+```
+XALT uses the `/usr/bin/gcc` path while filtering. 
 
-Bug Fix:
+##### Record Generation
+Run Records contain references to the symlink's path
+```
+  "cmdlineA": ["/sw/workload/xalt2/gcc"],
+```
 
-   1. Modified the generated assembly code to not set GNU Stack bit.
+However, in the `UserT` key, we see
+```
+    "exec_path": "/usr/bin/gcc",
+```
+Therefore run records capture both paths
 
+#### Profiling
 
-### XALT 2.4:
+XALT comes with a special build flag `--with-tmpdir=` which allows the user to specify the directory for intermediate logs, as opposed to the default which is `/dev/shm`. Attempting to use $HOME in this flag leads to signifcant slowdowns
 
-Bug Fix:
+Runtime information
+- `/dev/shm`: 0.03-0.04ms for a PKG record
+- `$HOME`: 0.2-0.3ms for a PKG record
 
-   1. Support for tracking GPU usage with the DCGM library from NVIDIA.
+While these seem like small numbers, minimizing the transmission time is important.
+Given that, a simple task of activating a conda environment leads to about 300 PKG records, and starting up a jupyter notebook creates 800 PKG records, it is evident that complicated scripts will lead to a lot more records.
+These savings scale with thousands of jobs.
 
-   2. XALT by default only uses LD_PRELOAD to track execution.
-   
-### XALT 2.3:
 
-Bug Fix:
 
-   1. Fix bug where XALT would miss libraries that depended on LD_LIBRARY_PATH.
-   
+#### Signals and SLURM
+On the non-preemptible queues, the slurm configuration specifies a gracetime of 30s. This means that slurmd sends a SIGTERM and SIGCONT to the job, waits 30s and then sends a SIGKILL.
+This would imply that jobs could take advantage of XALT's signal handling capabilities, and indeed this was the initial motivation for disabling signal forwarding on USR2. However,
+it turns out that slurm will send these signals out to ONLY job steps, and not child/forked processes. This, in combination with guaranteed start record creation, led to reverting to the original
+signal handling implementation.
 
-### XALT 2.2:
+If needed, preemptive signal handling can be turned on by setting `XALT_SIGNAL_HANDLER=yes` in your environment
 
-Features:
 
-   1. XALT registers a signal handler so that programs that seg-faults, fpe
-      and other signals will generate an end record.
+#### Open-OnDemand
 
-   2. XALT now optional supports detecting GPU usage through the NVIDIA DCGM library.
+Debugging issues for OOD was what revealed the main problem with improper exits(). However, since the SBATCH scripts used on OOD are controlled by Admin, we can ensure
+that XALT works the way we want it to here. 
 
-   3. Direct to database option has been removed.
+##### Option 1 - Handle Signals?
+Assuming that the sbatch script used to launch an OOD service, say Jupyter is something like this 
+```
+#! /bin/bash
+...
+#SBATCH --param=xyz
 
-### XALT 2.1:
+# Get port information 
+srun jupyter-server
+# OR
+jupyter-server
+```
+if Jupyter is executed as a job step, turning on signal handling in XALT by setting the environment variable `XALT_SIGNAL_HANDLER=yes` should be sufficient.
+If Jupyter is not a JOB step, then a trap on the batch shell should be good enough. Using the `#SBATCH --signal=B:signum@time_before_timeout` on the script and setting up a trap to send a TERM to the jupyter job using some bash scripting is good.
 
-Features:
+Here is an example from when we were using USR2 to preempt XALT.
 
-   1. XALT can now tracks both MPI and non-MPI programs subject to site controlled filtering
+```
+...
+#SBATCH --signal=B:12@60
+usrhandler(){
+    jupyter_process=$(ps xf | grep jupyter-server)
+    jupyter_pid="${jupyter_process:0:8}"
+    kill -s 12 $jupyter_pid
+}
+trap usrhandler 12
 
+jupyter-server
+...
 
-## Citation
+```
 
-To cite XALT, please use the following:
 
-Agrawal, K., Fahey, M. R., McLay, R., & James, D. (2014). User Environment Tracking and Problem Detection with XALT. In Proceedings of the First International Workshop on HPC User Support Tools (pp. 32–40). Piscataway, NJ, USA: IEEE Press. http://doi.org/10.1109/HUST.2014.6
 
-## Dataset
+##### Option 2 - Move everything to file-prefix!
 
-As part of the creation of XALT, data collected at the Texas Advanced
-Computer Center using XALT will be released for public use.
-Information about the dataset and links to the data may be found in
-the University of Texas TexasScholarWorks repository:
+If signal management seems too invasive, the trap installed on the bash can simply trigger a copy from `/dev/shm` to the file-prefix. For example, this is very similar to the sample epilog script:
+```
+#! /bin/bash
+#SBATCH --time=00:03:00         # Wall time limit (hh:mm:ss)
+#SBATCH --ntasks=1              # Number of tasks (processes)
+....
+#SBATCH --cpus-per-task=1       # Number of CPU cores per task
+#SBATCH --mem=4G                # Total memory for the job (4GB)
+#SBATCH --partition=cpu		    # Partition
 
-  XALT data: http://web.corral.tacc.utexas.edu/XALT/  
-  metadata: http://repositories.lib.utexas.edu/handle/2152/30535
 
-To cite XALT data, please use the following:   
 
-McLay, Robert & Fahey, Mark R. (2015). Understanding the Software Needs of High End Computer Users with XALT. Texas Advanced Computing Center. http://dx.doi.org/10.15781/T2PP4P
+sighandler(){
+    # Get YYYYMM
+    date=$(date '+%Y%m');
 
-## Copyright
+    # Directories used
+    dir_shm=/dev/shm/
+    xalt_record_dir=/sw/workload/delta/json/$date
+    xalt_pkg_records=$(find $dir_shm -type d -name 'XALT_pkg_*')
 
-XALT: A tool that tracks users jobs and environments on a cluster.  
-Copyright (C) 2013-2015 University of Texas at Austin  
-Copyright (C) 2013-2015 University of Tennessee
+    for pkg_record in $xalt_pkg_records
+    do
+            # Create a YYYYMM directory if it doesn't exist 
+            if [ ! -d "$xalt_record_dir" ]; then
+              mkdir $xalt_record_dir
+            fi
+            pkg_record_base=$(basename $pkg_record)
 
-## License
+            # Move from /dev/shm to transmission location
+            cp -r $pkg_record $xalt_record_dir/$pkg_record_base
+    done
+}
 
-This library is free software; you can redistribute it and/or modify
-it under the terms of the GNU Lesser General Public License as
-published by the Free Software Foundation; either version 2.1 of
-the License, or (at your option) any later version.
+trap sighandler TERM
 
-This library is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-Lesser  General Public License for more details.
+...
 
-You should have received a copy of the GNU Lesser General Public
-License along with this library; if not, write to the Free
-Software Foundation, Inc., 59 Temple Place, Suite 330,
-Boston, MA 02111-1307 USA
+```
+
+
+
+
+### Existing Issues
+- The generation of link records is not consistent among different compilers. Possibly due to the order in which $PATH is set. Seems to work with the  `/bin/gcc` and the aocc module. Link records do not generate with the gcc module
+- Need to turn on tracking for compilers on login nodes.
+- The `$APPTAINER_BINDPATH` variable set in the modulefile interferes with building containers. Builds fail due to lack of a mount point for these directories.
