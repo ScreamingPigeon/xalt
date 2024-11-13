@@ -220,18 +220,27 @@ env_patterns = [
 # Note that sys, os, re, and subprocess can not be tracked due to the way that python tracking works.
 # TODO modify these paths
 python_pkg_patterns = [
+  # { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r"^_"                  },  # SKIP names that start with a underscore
+  # { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r".*\."                },  # SKIP all names that are divided with periods: a.b.
+  # { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r"^\/sw\/external\/python\/anaconda3_.*"}, # Skip anaconda3 builtins 
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r".*conda\/.*"          },  # KEEP all packages installed by users
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r".*\/site-packages\/.*" },  # KEEP all site-packages 
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/delta/scratch\/.*"  },  # KEEP all packages the system project directories
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/scratch\/.*"        },  # KEEP all packages the system scratch directories
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/projects\/.*"       },  # KEEP all packages the system project directories
+  # { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/u\/.*"            },  # KEEP all packages installed by users
+  # { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/opt"               },  # SKIP all python packages in /opt except for ones in .*/site-packages/
+  # { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/home"              },  # SKIP all other packages in user locations
+  # { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/work"              },  # SKIP all other packages in user locations
+  # { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^[^/]"               }  # SKIP all built-in packages
   { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r"^_"                  },  # SKIP names that start with a underscore
   { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r".*\."                },  # SKIP all names that are divided with periods: a.b.
   { 'k_s' : 'SKIP', 'kind' : 'name', 'patt' : r"^\/sw\/external\/python\/anaconda3_.*"}, # Skip anaconda3 builtins 
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r".*conda\/.*"          },  # KEEP all packages installed by users
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r".*\/site-packages\/.*" },  # KEEP all site-packages 
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/delta/scratch\/.*"  },  # KEEP all packages the system project directories
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/scratch\/.*"        },  # KEEP all packages the system scratch directories
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/projects\/.*"       },  # KEEP all packages the system project directories
-  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r"^\/u\/.*"            },  # KEEP all packages installed by users
   { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/opt"               },  # SKIP all python packages in /opt except for ones in .*/site-packages/
   { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/home"              },  # SKIP all other packages in user locations
   { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^\/work"              },  # SKIP all other packages in user locations
-  { 'k_s' : 'SKIP', 'kind' : 'path', 'patt' : r"^[^/]"               }  # SKIP all built-in packages
-
+  { 'k_s' : 'KEEP', 'kind' : 'path', 'patt' : r".*"                   }   # KEEP everything else by default
 ]
+
+
+
