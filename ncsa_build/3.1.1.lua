@@ -1,4 +1,4 @@
--- XALT 3.0.2 Modfile
+-- XALT 3.1.1 Modfile
 
 -- Setting as sticky to bypass module purge on OOD launch script
 add_property("lmod","sticky")
@@ -32,8 +32,8 @@ prepend_path("COMPILER_PATH", bin)
 -- XAlT_DATE_TIME creation
 setenv("XALT_FILE_PREFIX", pathJoin(record_dir,formattedDate))
 
--- XAlT_DATE_TIME creation
-setenv("XALT_ALWAYS_CREATE_START", pathJoin(record_dir,formattedDate))
+-- -- XAlT_DATE_TIME creation
+-- setenv("XALT_ALWAYS_CREATE_START", pathJoin(record_dir,formattedDate))
 
 
 -- Variable needed for Python tracking outside a container 
@@ -41,10 +41,10 @@ prepend_path("PYTHONPATH",  pythonpath)
 
 
 -- Variables needed for XALT to get included into containers
-prepend_path("APPTAINER_BINDPATH", apptainer_bind_dir)
-setenv("APPTAINERENV_LD_PRELOAD", pathJoin(base, lib_dir, "libxalt_init.so"))
-setenv("APPTAINERENV_PYTHONPATH", pythonpath)
-
+-- prepend_path("APPTAINER_BINDPATH", apptainer_bind_dir)
+-- setenv("APPTAINERENV_LD_PRELOAD", pathJoin(base, lib_dir, "libxalt_init.so"))
+-- setenv("APPTAINERENV_PYTHONPATH", pythonpath)
+-- Disabled Apptainer in modfile on 10/31/2024
 
 ------------------------------------------------------------
 -- Only set this in production not for testing!!!

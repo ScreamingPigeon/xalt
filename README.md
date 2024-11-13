@@ -28,7 +28,15 @@ effective, and systematic way.
 
 ## Original Documentation
 
-Installation and Use of XALT is provided at https://xalt.readthedocs.io website.
+* Documentation:   https://xalt.readthedocs.org
+* GitHub:          https://github.com/xalt/xalt
+
+
+## XALT Mailing list
+
+* mailto:xalt-users@lists.sourceforge.net.
+
+Please go to https://sourceforge.net/projects/xalt/lists/xalt-users to join.
 
 
 # NCSA SPIN Summer 2024 Documentation
@@ -147,7 +155,7 @@ A condensed explanation of the key idea behind XALT is available [here](https://
 
 The main changes in this fork are
 1. XALT was segfaulting when wrapped around `lsof` with debugging on. This was fixed in XALT 3.0.3, but this was forked from 3.0.2 and had a near-identical fix.
-2. This fork of XALT supports creating start records for ALL PROCESSES as opposed to just MPI jobs. This can be achieved by setting `XALT_ALWAYS_CREATE_START=yes` in your environment. This has been included in the modulefile
+2. (No longer available) This fork of XALT supports creating start records for ALL PROCESSES as opposed to just MPI jobs. This can be achieved by setting `XALT_ALWAYS_CREATE_START=yes` in your environment. This has been included in the modulefile
 3. Comments around signal handling in [`src/libxalt/xalt_initialize.c`](https://github.com/ScreamingPigeon/xalt/blob/main/src/libxalt/xalt_initialize.c). 
 4. Inclusion of a custom config, build script, modulefile, epilog script, and a python cli-tool
 
